@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="nl">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RM Verkeerstechniek — Materiaal & Tracker Dashboard (5.000 Trackers Demo)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="assets/rm-logo.png" alt="RM Verkeerstechniek logo" class="brand-logo" />
+      <div>
+        <h1>Materiaal Tracking Dashboard</h1>
+        <p class="subtitle">Schaaltest met 5.000 trackers · Clustering, Geofencing, Onderhoud &amp; Historie</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+        <button id="btn-export" class="btn btn-excel" type="button">
+          ⬇ Exporteer naar Excel (.csv)
+        </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- KPI Cards -->
+    <section class="kpi-grid" aria-label="Overzicht statistieken">
+      <button class="kpi-card active" data-status-filter="all" type="button">
+        <span class="kpi-label">Totaal trackers</span>
+        <span class="kpi-value" id="kpi-total">0</span>
+        <span class="kpi-hint">Klik voor alles</span>
+      </button>
+      <button class="kpi-card kpi-ok" data-status-filter="ok" type="button">
+        <span class="kpi-label">Actief / Op locatie</span>
+        <span class="kpi-value" id="kpi-ok">0</span>
+        <span class="kpi-hint">Binnen projectzone (geofence)</span>
+      </button>
+      <button class="kpi-card kpi-moved" data-status-filter="moved" type="button">
+        <span class="kpi-label">Afwijkende locatie</span>
+        <span class="kpi-value" id="kpi-moved">0</span>
+        <span class="kpi-hint">Buiten projectzone</span>
+      </button>
+      <button class="kpi-card kpi-battery" data-status-filter="low_battery" type="button">
+        <span class="kpi-label">Batterij bijna leeg</span>
+        <span class="kpi-value" id="kpi-battery">0</span>
+        <span class="kpi-hint">&lt; 20% · Onderhoud nodig</span>
+      </button>
+      <button class="kpi-card kpi-offline" data-status-filter="offline" type="button">
+        <span class="kpi-label">Lang geen signaal</span>
+        <span class="kpi-value" id="kpi-offline">0</span>
+        <span class="kpi-hint">&gt; 24 uur geen update</span>
+      </button>
+    </section>
+
+    <!-- Filters -->
+    <section class="filters-bar" aria-label="Filters">
+      <div class="filter-group filter-search">
+        <label for="search-input">Zoeken</label>
+        <input id="search-input" type="search"
+          placeholder="Zoek op materiaal (bijv. Bord J16_1), tracker-ID of plaats..." />
+      </div>
+      <div class="filter-group">
+        <label for="project-filter">Project</label>
+        <select id="project-filter">
+          <option value="all">Alle projecten</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="type-filter">Materiaaltype</label>
+        <select id="type-filter">
+          <option value="all">Alle types</option>
+          <option value="Bord">Bord</option>
+          <option value="Hek">Hek</option>
+          <option value="Baken">Baken</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="status-filter">Status</label>
+        <select id="status-filter">
+          <option value="all">Alle statussen</option>
+          <option value="ok">OK (Binnen geofence)</option>
+          <option value="moved">Afwijkende locatie</option>
+          <option value="low_battery">Batterij bijna leeg</option>
+          <option value="offline">Lang geen signaal</option>
+        </select>
+      </div>
+      <button id="btn-reset" class="btn btn-ghost" type="button">Filters wissen</button>
+    </section>
+
+    <!-- Map + Detail Panel -->
+    <section class="workspace-grid">
+      <div class="card map-card">
+        <div class="card-header">
+          <div>
+            <h2>Live Kaartoverzicht (Geclusterd)</h2>
+            <p class="card-subtitle">Zoom in voor losse materialen · Klik op een materiaal voor het verplaatsingspad</p>
+          </div>
+          <div class="map-controls">
+            <label class="toggle-label">
+              <input id="toggle-geofences" type="checkbox" checked />
+              Toon projectzones (geofences)
+            </label>
+            <div class="legend">
+              <span class="legend-item"><i class="dot dot-ok"></i> OK</span>
+              <span class="legend-item"><i class="dot dot-moved"></i> Verplaatst</span>
+              <span class="legend-item"><i class="dot dot-battery"></i> Batterij laag</span>
+              <span class="legend-item"><i class="dot dot-offline"></i> Geen signaal</span>
+            </div>
+          </div>
+        </div>
+        <div id="map" aria-label="Kaart met verkeersmaterialen"></div>
+      </div>
+
+      <aside class="card detail-card" aria-label="Tracker details">
+        <div class="card-header">
+          <h2>Materiaaldetails &amp; Historie</h2>
+        </div>
+        <div id="detail-content" class="detail-empty">
+          <p>Klik op een marker op de kaart of een rij in de tabel om alle gegevens en de verplaatsingshistorie te
+            bekijken.</p>
+        </div>
+      </aside>
+    </section>
+
+    <!-- Project Maintenance & Management by Exception -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Onderhoud &amp; Afwijkingen per Project (Management by Exception)</h2>
+          <p class="card-subtitle">Klik op een aantal om direct te filteren op de trackers die aandacht nodig hebben
+            (bijv. voor een onderhoudsrit)</p>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th>Geofence straal</th>
+              <th>Totaal materialen</th>
+              <th>Afwijkende locatie</th>
+              <th>Batterij &lt; 20% (Onderhoud)</th>
+              <th>Lang geen signaal</th>
+            </tr>
+          </thead>
+          <tbody id="project-summary-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Data Table with Pagination -->
+    <section class="card table-card">
+      <div class="card-header">
+        <div>
+          <h2>Materialen &amp; Trackergegevens (<span id="visible-count">0</span> resultaten)</h2>
+          <p class="card-subtitle">Paginering actief (50 per pagina) zodat 5.000 trackers snel blijven · Exporteer
+            gefilterde selectie naar Excel</p>
+        </div>
+        <div class="pagination" id="pagination-controls">
+          <button id="page-prev" class="btn btn-ghost btn-sm" type="button">← Vorige</button>
+          <span id="page-info" class="page-info">Pagina 1 van 1</span>
+          <button id="page-next" class="btn btn-ghost btn-sm" type="button">Volgende →</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Materiaal</th>
+              <th>Type</th>
+              <th>Project</th>
+              <th>Tracker ID</th>
+              <th>Laatst bekende locatie</th>
+              <th>Laatst bijgewerkt</th>
+              <th>Batterij &amp; Restduur</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>
